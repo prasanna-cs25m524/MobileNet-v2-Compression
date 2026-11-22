@@ -7,10 +7,6 @@ from evaluate import evaluate
 
 
 def get_optimizer(name, model, lr=0.05, weight_decay=5e-4):
-    """
-    Instantiates the requested optimizer.
-    Supported: ['sgd', 'nesterov_sgd', 'adam', 'adamw', 'adagrad', 'rmsprop', 'nadam']
-    """
     name = name.lower()
     params = model.parameters()
 
@@ -29,17 +25,12 @@ def get_optimizer(name, model, lr=0.05, weight_decay=5e-4):
     elif name == 'nadam':
         return optim.NAdam(params, lr=lr, weight_decay=weight_decay)
     else:
-        raise ValueError(f"Unsupported optimizer: '{name}'. "
-                         f"Choose from: ['sgd', 'nesterov_sgd', 'adam', 'adamw', 'adagrad', 'rmsprop', 'nadam']")
+        raise ValueError(f"Unknown optimizer: '{name}'")
 
 
 def train(model, train_loader, test_loader, optimizer, device, epochs=100,
           scheduler=None, checkpoint_path='./checkpoints/best_mobilenetv2.pth',
           use_wandb=True):
-    """
-    Executes training of MobileNetV2 with evaluation after each epoch,
-    saves the checkpoint with highest test accuracy, and logs metrics to W&B.
-    """
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     best_acc = 0.0
 
@@ -53,7 +44,7 @@ def train(model, train_loader, test_loader, optimizer, device, epochs=100,
     if checkpoint_path:
         os.makedirs(os.path.dirname(os.path.abspath(checkpoint_path)), exist_ok=True)
 
-    print(f"\n--- Starting Training: {epochs} Epochs on {device} ---")
+    print(f"\nTraining for {epochs} epochs on {device}...")
     for epoch in range(1, epochs + 1):
         model.train()
         running_loss = 0.0
@@ -77,11 +68,10 @@ def train(model, train_loader, test_loader, optimizer, device, epochs=100,
         if scheduler is not None:
             scheduler.step()
 
-        # Epoch metrics
         train_acc = 100.0 * correct / max(total, 1)
         avg_train_loss = running_loss / len(train_loader)
 
-        # Validation metrics
+        # Validation
         model.eval()
         val_loss_sum = 0.0
         val_correct = 0
@@ -103,7 +93,6 @@ def train(model, train_loader, test_loader, optimizer, device, epochs=100,
         history['train_acc'].append(train_acc)
         history['val_acc'].append(test_acc)
 
-        # Log metrics to Weights & Biases
         if use_wandb and wandb.run is not None:
             wandb.log({
                 "epoch": int(epoch),
@@ -114,7 +103,6 @@ def train(model, train_loader, test_loader, optimizer, device, epochs=100,
                 "lr": float(optimizer.param_groups[0]['lr'])
             }, commit=True)
 
-        # Checkpoint best model
         is_best = test_acc > best_acc
         if is_best:
             best_acc = test_acc
@@ -131,8 +119,5 @@ def train(model, train_loader, test_loader, optimizer, device, epochs=100,
               f"Loss: {avg_train_loss:.4f} | Val Loss: {val_loss:.4f} | "
               f"Train Acc: {train_acc:.2f}% | Test Acc: {test_acc:.2f}%{best_mark}")
 
-    print(f"\nTraining Complete. Best Validation Top-1 Accuracy: {best_acc:.2f}%")
-    if checkpoint_path and os.path.exists(checkpoint_path):
-        print(f"Best checkpoint saved at: {checkpoint_path}")
-
+    print(f"\nTraining Complete. Best Test Acc: {best_acc:.2f}%")
     return history, best_acc

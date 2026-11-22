@@ -1,28 +1,11 @@
-"""
-Utility functions for:
-1. Measuring in-memory activation footprint during forward pass using forward hooks.
-2. In-memory parameter and storage calculation.
-3. Plotting training/validation loss and accuracy curves.
-4. Checkpoint saving and loading.
-"""
-
 import os
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
 
+# Measure activation memory using forward hooks
 def measure_activation_memory(model, input_shape=(1, 3, 32, 32), act_bits=8, device='cpu'):
-    """
-    Measures the in-memory activation footprint during an inference forward pass.
-    Methodology:
-      - Attaches PyTorch forward hooks to all intermediate feature-producing layers
-        (Conv2d, BatchNorm2d, ReLU6/ActFakeQuant, Linear, and residual additions).
-      - Tracks tensor output shapes and total elements produced in a forward pass.
-      - Calculates FP32 RAM footprint (4 bytes/element) vs. Quantized footprint (act_bits/8 bytes/element).
-    Returns a dictionary with total elements, FP32 memory (KB/MB), Quantized memory (KB/MB),
-    and the activation compression ratio.
-    """
     activation_elements = []
     hooks = []
 
@@ -34,19 +17,16 @@ def measure_activation_memory(model, input_shape=(1, 3, 32, 32), act_bits=8, dev
                 if isinstance(item, torch.Tensor):
                     activation_elements.append((module.__class__.__name__, item.numel()))
 
-    # Register forward hooks on intermediate layers
     for name, module in model.named_modules():
-        if len(list(module.children())) == 0:  # Leaf modules
+        if len(list(module.children())) == 0:
             hooks.append(module.register_forward_hook(hook_fn))
 
     model.eval()
-    was_training = model.training
     dummy_input = torch.zeros(input_shape, device=device)
 
     with torch.no_grad():
         _ = model(dummy_input)
 
-    # Remove hooks
     for h in hooks:
         h.remove()
 
@@ -71,41 +51,34 @@ def measure_activation_memory(model, input_shape=(1, 3, 32, 32), act_bits=8, dev
 
 
 def count_parameters(model):
-    """Returns total and trainable parameter counts."""
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return {"total": total_params, "trainable": trainable_params}
 
 
 def plot_training_curves(history, save_path="training_curves.png"):
-    """
-    Plots and saves training & validation loss and accuracy curves (Question 1c).
-    history: dict with keys ['train_loss', 'val_loss', 'train_acc', 'val_acc']
-    """
     epochs = range(1, len(history['train_loss']) + 1)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    # Loss Curve
-    ax1.plot(epochs, history['train_loss'], 'b-', label='Train Loss', linewidth=2)
-    ax1.plot(epochs, history['val_loss'], 'r--', label='Validation Loss', linewidth=2)
-    ax1.set_title('Training & Validation Loss', fontsize=14, fontweight='bold')
-    ax1.set_xlabel('Epoch', fontsize=12)
-    ax1.set_ylabel('Loss', fontsize=12)
+    ax1.plot(epochs, history['train_loss'], label='Train Loss')
+    ax1.plot(epochs, history['val_loss'], label='Val Loss')
+    ax1.set_title('Training & Validation Loss')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss')
     ax1.grid(True, linestyle=':', alpha=0.6)
-    ax1.legend(fontsize=11)
+    ax1.legend()
 
-    # Accuracy Curve
-    ax2.plot(epochs, history['train_acc'], 'b-', label='Train Accuracy', linewidth=2)
-    ax2.plot(epochs, history['val_acc'], 'g--', label='Validation Accuracy', linewidth=2)
-    ax2.set_title('Training & Validation Top-1 Accuracy', fontsize=14, fontweight='bold')
-    ax2.set_xlabel('Epoch', fontsize=12)
-    ax2.set_ylabel('Accuracy (%)', fontsize=12)
+    ax2.plot(epochs, history['train_acc'], label='Train Acc')
+    ax2.plot(epochs, history['val_acc'], label='Val Acc')
+    ax2.set_title('Training & Validation Top-1 Accuracy')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Accuracy (%)')
     ax2.grid(True, linestyle=':', alpha=0.6)
-    ax2.legend(fontsize=11)
+    ax2.legend()
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
     plt.savefig(save_path, dpi=300)
     plt.close()
-    print(f"Training curves successfully saved to: {save_path}")
+    print(f"Saved curves to: {save_path}")

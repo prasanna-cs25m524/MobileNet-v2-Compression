@@ -1,9 +1,3 @@
-"""
-sweep_wandb.py: Systematic Quantization Sweep for MobileNet-v2 with W&B Logging.
-Runs at least 8 simulation configurations (Question 3b) to generate the
-Parallel Coordinates Chart on Weights & Biases.
-"""
-
 import os
 import argparse
 import torch
@@ -16,35 +10,28 @@ DEFAULT_PROJECT = 'CS6886W-MobileNetV2-Quantization'
 
 def run_sweep(checkpoint_path='./checkpoints/best_mobilenetv2.pth',
               project=DEFAULT_PROJECT, calib_batches=20):
-    """
-    Executes a comprehensive grid of 12 quantization configurations:
-    Varying weight bits (8, 6, 4), activation bits (8, 6, 4), and per-channel scaling.
-    """
-    # 12 diverse simulation configurations (Minimum required is 8)
+    # 12 configurations across 8, 6, 4 bits and per-channel vs per-tensor
     configs = [
-        # W8 Configurations
         {"w_bits": 8, "a_bits": 8, "per_channel": True,  "desc": "W8A8_PerChannel"},
         {"w_bits": 8, "a_bits": 6, "per_channel": True,  "desc": "W8A6_PerChannel"},
         {"w_bits": 8, "a_bits": 4, "per_channel": True,  "desc": "W8A4_PerChannel"},
         {"w_bits": 8, "a_bits": 8, "per_channel": False, "desc": "W8A8_PerTensor"},
 
-        # W6 Configurations
         {"w_bits": 6, "a_bits": 8, "per_channel": True,  "desc": "W6A8_PerChannel"},
         {"w_bits": 6, "a_bits": 6, "per_channel": True,  "desc": "W6A6_PerChannel"},
         {"w_bits": 6, "a_bits": 4, "per_channel": True,  "desc": "W6A4_PerChannel"},
         {"w_bits": 6, "a_bits": 6, "per_channel": False, "desc": "W6A6_PerTensor"},
 
-        # W4 Configurations
         {"w_bits": 4, "a_bits": 8, "per_channel": True,  "desc": "W4A8_PerChannel"},
         {"w_bits": 4, "a_bits": 6, "per_channel": True,  "desc": "W4A6_PerChannel"},
         {"w_bits": 4, "a_bits": 4, "per_channel": True,  "desc": "W4A4_PerChannel"},
         {"w_bits": 4, "a_bits": 4, "per_channel": False, "desc": "W4A4_PerTensor"},
     ]
 
-    print(f"\nLaunching Quantization Sweep: {len(configs)} configurations on project '{project}'")
+    print(f"Starting sweep: {len(configs)} configurations")
 
     for idx, cfg in enumerate(configs, start=1):
-        print(f"\n--- Running Experiment [{idx}/{len(configs)}]: {cfg['desc']} ---")
+        print(f"\n--- Run [{idx}/{len(configs)}]: {cfg['desc']} ---")
 
         run = wandb.init(
             project=project,
@@ -54,7 +41,6 @@ def run_sweep(checkpoint_path='./checkpoints/best_mobilenetv2.pth',
                 "activation_bits": cfg["a_bits"],
                 "per_channel": cfg["per_channel"],
                 "calib_batches": calib_batches,
-                "strategy": "per_channel" if cfg["per_channel"] else "per_tensor"
             },
             reinit=True
         )
@@ -68,7 +54,6 @@ def run_sweep(checkpoint_path='./checkpoints/best_mobilenetv2.pth',
             per_channel=cfg["per_channel"]
         )
 
-        # Log metrics to W&B for Parallel Coordinates Plot
         wandb.log({
             "weight_bits": cfg["w_bits"],
             "activation_bits": cfg["a_bits"],
@@ -84,21 +69,17 @@ def run_sweep(checkpoint_path='./checkpoints/best_mobilenetv2.pth',
 
         run.finish()
 
-    print("\nSweep Complete! Open your W&B dashboard and add a 'Parallel Coordinates' panel.")
+    print("\nSweep finished! You can view the Parallel Coordinates chart on W&B.")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="W&B Quantization Sweep for MobileNet-v2")
-    parser.add_argument('--project', type=str, default=DEFAULT_PROJECT,
-                        help=f'W&B project name (default: {DEFAULT_PROJECT})')
-    parser.add_argument('--checkpoint', type=str, default='./checkpoints/best_mobilenetv2.pth',
-                        help='Path to trained FP32 checkpoint')
-    parser.add_argument('--calib_batches', type=int, default=20,
-                        help='Number of training batches for activation calibration')
+    parser = argparse.ArgumentParser(description="W&B Quantization Sweep")
+    parser.add_argument('--project', type=str, default=DEFAULT_PROJECT)
+    parser.add_argument('--checkpoint', type=str, default='./checkpoints/best_mobilenetv2.pth')
+    parser.add_argument('--calib_batches', type=int, default=20)
 
     args = parser.parse_args()
 
-    # Login to W&B
     api_key = os.environ.get("WANDB_API_KEY", "")
     if api_key:
         wandb.login(key=api_key)
