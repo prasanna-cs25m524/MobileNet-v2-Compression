@@ -1,31 +1,8 @@
 import os
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import wandb
 from evaluate import evaluate
-
-
-def get_optimizer(name, model, lr=0.05, weight_decay=5e-4):
-    name = name.lower()
-    params = model.parameters()
-
-    if name == 'sgd':
-        return optim.SGD(params, lr=lr, momentum=0.9, weight_decay=weight_decay)
-    elif name == 'nesterov_sgd':
-        return optim.SGD(params, lr=lr, momentum=0.9, weight_decay=weight_decay, nesterov=True)
-    elif name == 'adam':
-        return optim.Adam(params, lr=lr, weight_decay=weight_decay)
-    elif name == 'adamw':
-        return optim.AdamW(params, lr=lr, weight_decay=weight_decay)
-    elif name == 'adagrad':
-        return optim.Adagrad(params, lr=lr, weight_decay=weight_decay)
-    elif name == 'rmsprop':
-        return optim.RMSprop(params, lr=lr, momentum=0.9, weight_decay=weight_decay)
-    elif name == 'nadam':
-        return optim.NAdam(params, lr=lr, weight_decay=weight_decay)
-    else:
-        raise ValueError(f"Unknown optimizer: '{name}'")
 
 
 def train(model, train_loader, test_loader, optimizer, device, epochs=100,
