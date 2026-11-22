@@ -1,0 +1,140 @@
+"""
+test.py: Standalone Quantization Evaluation Script for MobileNet-v2.
+Usage matches the assignment requirement:
+    python test.py --weight_quant_bits 8 --activation_quant_bits 8
+"""
+
+import os
+import argparse
+import torch
+import torch.nn as nn
+
+from dataset import get_dataloaders
+from model import get_model
+from evaluate import evaluate
+from quantize import (
+    swap_to_quant_modules,
+    freeze_all_quant,
+    compute_model_in_memory_size,
+    print_compression_report
+)
+from utils import measure_activation_memory
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+def run_quantization_evaluation(weight_bits=8, act_bits=8,
+                                checkpoint_path='./checkpoints/best_mobilenetv2.pth',
+                                batch_size=128, calib_batches=20,
+                                per_channel=True, width_mult=1.0, dropout=0.2):
+    print("\n" + "=" * 65)
+    print(f"RUNNING EVALUATION: Weights={weight_bits}-bit, Activations={act_bits}-bit")
+    print(f"Device: {device} | Per-Channel: {per_channel}")
+    print("=" * 65)
+
+    train_loader, test_loader = get_dataloaders(batch_size=batch_size)
+
+    # 1. Instantiate baseline FP32 model
+    model = get_model(num_classes=10, width_mult=width_mult, dropout=dropout)
+
+    # Load weights
+    if os.path.exists(checkpoint_path):
+        ckpt = torch.load(checkpoint_path, map_location=device)
+        state_dict = ckpt['model_state_dict'] if (isinstance(ckpt, dict) and 'model_state_dict' in ckpt) else ckpt
+        model.load_state_dict(state_dict)
+        print(f"Loaded trained checkpoint: {checkpoint_path}")
+    else:
+        print(f"Warning: Checkpoint '{checkpoint_path}' not found! Evaluating on uninitialized weights.")
+
+    model.to(device)
+    model.eval()
+
+    # 2. Evaluate Baseline Accuracy
+    baseline_acc = evaluate(model, test_loader, device)
+    print(f">> Baseline FP32 Test Top-1 Accuracy: {baseline_acc:.2f}%")
+
+    # 3. Swap to Custom Quantized Modules
+    swap_to_quant_modules(
+        model,
+        weight_bits=weight_bits,
+        act_bits=act_bits,
+        per_channel=per_channel,
+        activations_unsigned=True
+    )
+    model.to(device)
+
+    # 4. Calibration Phase: Feed calibration batches to observe activation dynamic ranges
+    print(f">> Calibrating activation ranges over {calib_batches} batches...")
+    model.eval()
+    with torch.no_grad():
+        for i, (images, _) in enumerate(train_loader):
+            images = images.to(device)
+            _ = model(images)
+            if (i + 1) >= calib_batches:
+                break
+
+    # 5. Freeze Quantization Parameters (scales, zero points)
+    freeze_all_quant(model)
+
+    # 6. Evaluate Quantized Model Accuracy
+    quant_acc = evaluate(model, test_loader, device)
+    acc_drop = baseline_acc - quant_acc
+    print(f">> Quantized Test Top-1 Accuracy: {quant_acc:.2f}% (Drop: {acc_drop:+.2f}%)")
+
+    # 7. In-Memory Footprint & Overhead Calculation
+    model_summary = compute_model_in_memory_size(
+        model, weight_bits=weight_bits, per_channel=per_channel, act_bits=act_bits
+    )
+
+    # 8. Activation Footprint Measurement via PyTorch Forward Hooks
+    act_summary = measure_activation_memory(
+        model, input_shape=(1, 3, 32, 32), act_bits=act_bits, device=device
+    )
+
+    # 9. Print Full Formatted Report
+    print_compression_report(model_summary, act_summary)
+
+    return {
+        "baseline_acc": baseline_acc,
+        "quant_acc": quant_acc,
+        "acc_drop": acc_drop,
+        "model_summary": model_summary,
+        "act_summary": act_summary
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="MobileNet-v2 Custom Quantization Evaluation")
+    parser.add_argument('--weight_quant_bits', type=int, default=8,
+                        help='Bits to quantize weights (e.g., 8, 6, 4)')
+    parser.add_argument('--activation_quant_bits', type=int, default=8,
+                        help='Bits to quantize activations (e.g., 8, 6, 4)')
+    parser.add_argument('--checkpoint', type=str, default='./checkpoints/best_mobilenetv2.pth',
+                        help='Path to trained FP32 checkpoint')
+    parser.add_argument('--batch_size', type=int, default=128,
+                        help='Batch size for evaluation')
+    parser.add_argument('--calib_batches', type=int, default=20,
+                        help='Number of training batches for activation calibration')
+    parser.add_argument('--no_per_channel', action='store_true',
+                        help='Disable per-channel scaling (use per-tensor instead)')
+    parser.add_argument('--width_mult', type=float, default=1.0,
+                        help='MobileNetV2 width multiplier')
+    parser.add_argument('--dropout', type=float, default=0.2,
+                        help='MobileNetV2 dropout')
+
+    args = parser.parse_args()
+
+    run_quantization_evaluation(
+        weight_bits=args.weight_quant_bits,
+        act_bits=args.activation_quant_bits,
+        checkpoint_path=args.checkpoint,
+        batch_size=args.batch_size,
+        calib_batches=args.calib_batches,
+        per_channel=not args.no_per_channel,
+        width_mult=args.width_mult,
+        dropout=args.dropout
+    )
+
+
+if __name__ == '__main__':
+    main()

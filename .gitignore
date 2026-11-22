@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data & Checkpoints
+data/
+checkpoints/*.pth
+checkpoints/*.pt
+*.pth
+*.pt
+
+# Weights & Biases
+wandb/
+
+# Jupyter / Colab
+.ipynb_checkpoints/
+
+# Environments
+env/
+venv/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
