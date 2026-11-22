@@ -7,6 +7,7 @@ import wandb
 from dataset import get_dataloaders
 from model import get_model
 from train import train
+from evaluate import evaluate_failure_modes
 from test import run_quantization_evaluation
 from utils import plot_training_curves, count_parameters, set_seed
 
@@ -69,6 +70,12 @@ def run_training(epochs=100, batch_size=128, lr=0.05, seed=42,
     plot_training_curves(history, save_path="./data/training_curves.png")
 
     print(f"\nFinal Best Test Accuracy: {best_acc:.2f}%")
+    if os.path.exists(checkpoint_path):
+        ckpt = torch.load(checkpoint_path, map_location=device)
+        state_dict = ckpt['model_state_dict'] if (isinstance(ckpt, dict) and 'model_state_dict' in ckpt) else ckpt
+        model.load_state_dict(state_dict)
+        evaluate_failure_modes(model, test_loader, device)
+
     wandb.summary["best_val_acc"] = best_acc
     wandb.finish()
     return best_acc
