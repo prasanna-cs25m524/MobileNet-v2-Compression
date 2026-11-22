@@ -4,6 +4,7 @@ import torch
 import wandb
 
 from test import run_quantization_evaluation
+from utils import set_seed
 
 WANDB_API_KEY = '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'
 DEFAULT_PROJECT = 'CS6886W-MobileNetV2-Quantization'
@@ -78,8 +79,10 @@ def main():
     parser.add_argument('--project', type=str, default=DEFAULT_PROJECT)
     parser.add_argument('--checkpoint', type=str, default='./checkpoints/best_mobilenetv2.pth')
     parser.add_argument('--calib_batches', type=int, default=20)
+    parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
     args = parser.parse_args()
+    set_seed(args.seed)
 
     # Automated W&B login
     api_key = os.environ.get("WANDB_API_KEY", WANDB_API_KEY)

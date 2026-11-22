@@ -12,7 +12,7 @@ from quantize import (
     compute_model_in_memory_size,
     print_compression_report
 )
-from utils import measure_activation_memory
+from utils import measure_activation_memory, set_seed
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -108,8 +108,10 @@ def main():
                         help='Use per-tensor instead of per-channel')
     parser.add_argument('--width_mult', type=float, default=1.0)
     parser.add_argument('--dropout', type=float, default=0.2)
+    parser.add_argument('--seed', type=int, default=42, help='Random seed')
 
     args = parser.parse_args()
+    set_seed(args.seed)
 
     run_quantization_evaluation(
         weight_bits=args.weight_quant_bits,
