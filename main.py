@@ -14,6 +14,7 @@ from evaluate import evaluate
 from utils import plot_training_curves, count_parameters
 
 
+WANDB_API_KEY      = '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'
 DEFAULT_PROJECT    = 'CS6886W-MobileNetV2-Quantization'
 DEFAULT_SEED       = 42
 DEFAULT_OPTIMIZER  = 'nesterov_sgd'
@@ -111,14 +112,10 @@ def main():
     args = parser.parse_args()
     set_seed(args.seed)
 
-    api_key = os.environ.get("WANDB_API_KEY", "")
+    # Automated W&B login
+    api_key = os.environ.get("WANDB_API_KEY", WANDB_API_KEY)
     if api_key:
         wandb.login(key=api_key)
-    else:
-        try:
-            wandb.login()
-        except Exception:
-            pass
 
     if args.eval_only:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

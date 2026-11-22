@@ -5,6 +5,7 @@ import wandb
 
 from test import run_quantization_evaluation
 
+WANDB_API_KEY = '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'
 DEFAULT_PROJECT = 'CS6886W-MobileNetV2-Quantization'
 
 
@@ -80,14 +81,10 @@ def main():
 
     args = parser.parse_args()
 
-    api_key = os.environ.get("WANDB_API_KEY", "")
+    # Automated W&B login
+    api_key = os.environ.get("WANDB_API_KEY", WANDB_API_KEY)
     if api_key:
         wandb.login(key=api_key)
-    else:
-        try:
-            wandb.login()
-        except Exception:
-            pass
 
     run_sweep(
         checkpoint_path=args.checkpoint,
