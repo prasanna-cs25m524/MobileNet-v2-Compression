@@ -70,3 +70,28 @@ Runs the required simulation sweep (12 configurations across 8-bit, 6-bit, and 4
 python main.py --sweep
 ```
 After the sweep completes, add a **Parallel Coordinates** panel in your W&B project dashboard to view the chart.
+
+---
+
+## 6. Baseline Configuration
+
+### MobileNet-v2 Architecture:
+- **Width Multiplier ($\alpha$):** `1.0`
+- **Activation Function:** `ReLU6`
+- **Channel Divisibility:** `round_nearest=8` via `_make_divisible()`
+- **Dropout:** `0.2`
+- **Batch Normalization:** `BatchNorm2d` after each convolution (`momentum=0.1`, `eps=1e-5`)
+- **CIFAR-10 Specific Tweak:** Initial Conv2d uses `stride=1` (instead of `stride=2` for ImageNet) to preserve dimensions on $32\times 32$ inputs
+
+### Data Pipeline & Augmentation:
+- **Normalization:** Per-channel mean `(0.4914, 0.4822, 0.4465)` and std `(0.2023, 0.1994, 0.2010)`
+- **Train Augmentations:** `RandomCrop(32, padding=4)`, `RandomHorizontalFlip()`, and `Cutout(n_holes=1, length=16)`
+- **Batch Size:** `128`
+
+### Training Strategy:
+- **Optimizer:** `SGD` with `momentum=0.9`, `nesterov=True`, and `weight_decay=5e-4`
+- **Initial Learning Rate:** `0.05`
+- **LR Schedule:** `CosineAnnealingLR` ($T_{\max}=100$, $\eta_{\min}=10^{-4}$)
+- **Loss Function:** `nn.CrossEntropyLoss(label_smoothing=0.1)`
+- **Epochs:** `100`
+- **Random Seed:** `42` for o/p reproducibility
