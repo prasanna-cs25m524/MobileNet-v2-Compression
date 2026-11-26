@@ -17,7 +17,7 @@ DEFAULT_CKPT    = './checkpoints/best_mobilenetv2.pth'
 
 
 def run_training(epochs=100, batch_size=128, lr=0.05, seed=42,
-                 checkpoint_path=DEFAULT_CKPT, project=DEFAULT_PROJECT):
+                 checkpoint_path=DEFAULT_CKPT, project=DEFAULT_PROJECT, run_name=None):
     set_seed(seed)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device} | Seed: {seed}")
@@ -25,6 +25,9 @@ def run_training(epochs=100, batch_size=128, lr=0.05, seed=42,
     api_key = os.environ.get("WANDB_API_KEY", WANDB_API_KEY)
     if api_key:
         wandb.login(key=api_key)
+
+    if run_name is None:
+        run_name = f"baseline_mobilenetv2_ep{epochs}_lr{lr}_bs{batch_size}"
 
     wandb.init(
         project=project,
@@ -37,7 +40,7 @@ def run_training(epochs=100, batch_size=128, lr=0.05, seed=42,
             "optimizer": "nesterov_sgd",
             "seed": seed
         },
-        name=f"baseline_mobilenetv2_ep{epochs}_lr{lr}_bs{batch_size}"
+        name=run_name
     )
 
     train_loader, test_loader = get_dataloaders(batch_size=batch_size)
@@ -177,6 +180,8 @@ def main():
                         help=f'Checkpoint path (default: {DEFAULT_CKPT})')
     parser.add_argument('--project', type=str, default=DEFAULT_PROJECT,
                         help=f'W&B project name (default: {DEFAULT_PROJECT})')
+    parser.add_argument('--run_name', type=str, default=None,
+                        help='Custom W&B run name (default: auto-generated)')
 
     args = parser.parse_args()
     set_seed(args.seed)
@@ -210,7 +215,8 @@ def main():
             lr=args.lr,
             seed=args.seed,
             checkpoint_path=args.checkpoint,
-            project=args.project
+            project=args.project,
+            run_name=args.run_name
         )
 
 

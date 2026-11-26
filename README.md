@@ -50,7 +50,11 @@ Fixed random seed is used across python, numpy, and torch via `set_seed(42)` to 
 ### Option 1: Baseline Training (Default Mode)
 Trains MobileNet-v2 on CIFAR-10 (100 epochs, Nesterov SGD, Cosine Annealing, seed 42):
 ```bash
+# Default baseline (100 epochs):
 python main.py
+
+# Baseline with a custom W&B run name / project:
+python main.py --run_name "baseline_mobilenetv2_100ep_clean"
 ```
 *Saves best model to `./checkpoints/best_mobilenetv2.pth` and loss/accuracy plots to `./data/training_curves.png`.*
 
