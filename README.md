@@ -139,17 +139,18 @@ The baseline MobileNet-v2 was trained for 100 epochs with random seed 42.
 
 | Class | Accuracy | Notes / Failure Modes |
 | :--- | :---: | :--- |
-| Automobile | 97.90% | High accuracy, few confused with truck (18) |
-| Ship | 97.20% | Clean separation |
-| Truck | 97.20% | Mostly confused with automobile |
-| Frog | 96.50% | Clean separation |
+| Automobile | 97.90% | Misunderstood as truck 18 times |
+| Ship | 97.20% | Clean separation, water background helps |
+| Truck | 97.20% | High accuracy, few confused with cars |
+| Frog | 96.50% | Good separation |
 | Horse | 96.10% | Good separation |
-| Deer | 95.80% | Occasional confusion with horse/bird |
-| Airplane | 95.40% | Good separation |
-| Bird | 93.90% | Some confusion with airplanes and other small animals |
-| Dog | 91.50% | Frequently confused with cat (57 times) |
-| Cat | 88.50% | Lowest accuracy; frequently confused with dog (68 times) |
+| Deer | 95.80% | Minor confusion with horse/bird |
+| Airplane | 95.40% | High accuracy, sky background helps |
+| Bird | 93.90% | Some confusion with airplanes/small animals |
+| Dog | 91.50% | Frequently predicted as cat (57 times) |
+| Cat | 88.50% | Lowest accuracy; predicted as dog 68 times |
 
-**Overall Observations:**
-- Vehicles (automobile, truck, ship) show the highest performance (>97%), likely due to distinctive edges and geometric features.
-- The largest source of errors is between visually similar animal categories, specifically cat vs. dog (accounting for more than half of all misclassifications), which is expected given the low 32x32 resolution of CIFAR-10.
+**Observations:**
+- Cat detection test accuracy is lowest at 88.50%. So I would say the biggest error was between cats and dogs because 68 cats were predicted as dogs, and 57 dogs were predicted as cats. This one confusion is equivalent to more than half of all misclassified images.
+- Maybe I am thinking in 32x32 resolution, cats and dogs look similar making them easy to confuse, so if we try with 224x224 we would have not seen this drop.
+- Few of automobiles were misunderstood as trucks (18 times) because maybe there is confusion between wheels, road backgrounds, etc., as that will mostly look the same in 32x32 resolution.
