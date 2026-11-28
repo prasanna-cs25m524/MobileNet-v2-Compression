@@ -111,7 +111,12 @@ The backbone consists of an initial standard convolution, followed by **17 Inver
 
 ### Data Pipeline & Augmentation:
 - **Normalization:** Per-channel mean `(0.4914, 0.4822, 0.4465)` and std `(0.2023, 0.1994, 0.2010)`
-- **Train Augmentations:** `RandomCrop(32, padding=4)`, `RandomHorizontalFlip()`, and `Cutout(n_holes=1, length=16)`
+- **Augmentation Pipeline:**
+  - `RandomCrop(32, padding=4)`: In the dataset, photos naturally capture the object at the center of the frame so there is a possibility that it may learn or memorize the center coordinates. To avoid that, we randomly cropped the image.
+  - `RandomHorizontalFlip()`: Sometimes the image can be facing left-to-right or right-to-left (e.g. car facing left and car facing right should both be recognized as car), so we flip the image horizontally.
+  - `RandomRotation(degrees=5)`: In photos we can take pictures in any orientation or tilt, so added up to 5-degree tilt to the image.
+  - `ColorJitter(brightness=0.1, contrast=0.1)`: If all photos of a certain object (e.g. car) have similar brightness, the ANN may memorize bright photo = car, so we add random brightness and contrast.
+  - `Cutout(n_holes=1, length=16)`: The ANN can learn one feature dominantly (for example when recognizing a bird, if all images have clear eyes and beak, it may not learn wings or feathers). Dropping a random 16x16 black square over photos forces it to learn all features.
 - **Batch Size:** `128`
 
 ### Training Strategy:
@@ -154,3 +159,52 @@ The baseline MobileNet-v2 was trained for 100 epochs with random seed 42.
 - Cat detection test accuracy is lowest at 88.50%. So I would say the biggest error was between cats and dogs because 68 cats were predicted as dogs, and 57 dogs were predicted as cats. This one confusion is equivalent to more than half of all misclassified images.
 - Maybe I am thinking in 32x32 resolution, cats and dogs look similar making them easy to confuse, so if we try with 224x224 we would have not seen this drop.
 - Few of automobiles were misunderstood as trucks (18 times) because maybe there is confusion between wheels, road backgrounds, etc., as that will mostly look the same in 32x32 resolution.
+
+---
+
+## 8. Model Compression Implementation
+
+### 1. Configurable Compression & Design Choices:
+- Custom quantization written in `quantize.py` without external compression libraries. Configurable for 8-bit, 6-bit, and 4-bit for both weights and activations.
+- **Weights:**
+  - Symmetric signed quantization with Zero Point = 0. Weights are already centered around zero, so setting Zero Point = 0 saves RAM (no zero-point values stored) and avoids subtracting zero-points during multiplication.
+  - Per-channel scaling (one scale per output channel) instead of one scale for the whole layer. MobileNet-v2 uses depthwise convolutions where different channels have very different weight ranges. Per-tensor scaling rounded small channels to zero and destroyed accuracy; per-channel scaling fixed this completely.
+- **Activations:**
+  - Asymmetric unsigned quantization ($0$ to $255$ for 8-bit). MobileNet-v2 uses `ReLU6`, so activations are always positive ($0$ to $6$). Using unsigned gives all 256 buckets for the positive range instead of wasting half on negative numbers that never occur.
+  - Calibrated over 20 training batches to find and freeze min/max activation values, providing stable scaling factors before testing.
+
+### 2. How Compression is Applied to MobileNet-v2:
+- MobileNet-v2 has layers nested inside 17 `InvertedResidual` blocks, so a simple sequential loop could not find them. Wrote a recursive function `swap_to_quant_modules()` that goes through all child blocks and swaps:
+  - `nn.Conv2d` $\rightarrow$ `QuantConv2d`
+  - `nn.Linear` $\rightarrow$ `QuantLinear`
+  - `nn.ReLU6` $\rightarrow$ wrapped with `ActFakeQuant` (so as soon as activations come out of `ReLU6`, they are calibrated and rounded to discrete 8-bit / 6-bit / 4-bit integer levels before entering the next convolution layer).
+- **Layers Compressed:**
+  - The first $3\times 3$ input conv.
+  - All 17 Inverted Residual blocks ($1\times 1$ expansion, $3\times 3$ depthwise, and $1\times 1$ projection convs).
+  - The final $1\times 1$ conv.
+  - The final Linear classification layer.
+  - All 51 intermediate activation outputs.
+- **Layers Not Touched (Exceptions):**
+  - Biases kept as normal float32 because summing many 8-bit multiplications can easily overflow if the bias is also low-bit.
+  - BatchNorm not quantized separately because its parameters are linear and merged directly into the convolution weights at test time.
+
+### 3. Storage Overheads & In-Memory Size Estimates:
+Real in-memory RAM usage is calculated by adding quantized weights, float32 biases, and scale metadata stored in RAM:
+
+- **Metadata Overhead:**
+  - **Weight scales:** For per-channel, one 32-bit float scale (4 bytes) is stored per output channel ($34,090 \text{ channels} \times 4 \text{ bytes} \approx \mathbf{133.16\text{ KB}}$).
+  - **Weight zero-points:** $\mathbf{0\text{ KB}}$ (since Zero Point = 0).
+  - **Activation scales & zero-points:** $51 \text{ layers} \times 8 \text{ bytes} \approx \mathbf{0.40\text{ KB}}$.
+  - **Total Overhead in RAM:** $133.16 + 0.40 = \mathbf{133.56\text{ KB}}$ ($\approx 0.13\text{ MB}$).
+
+- **In-Memory Size & Results (Weight 8-bit, Activation 8-bit Per-Channel):**
+
+| Component | Uncompressed FP32 | Quantized (W8A8 Per-Channel) | Compression Ratio |
+| :--- | :--- | :--- | :---: |
+| **Weights** | 8.467 MB | 2.117 MB | **3.77x** |
+| **Biases** | 0.065 MB | 0.065 MB (kept FP32) | 1.00x |
+| **Metadata (scales)** | 0.000 MB | 0.130 MB (133.56 KB) | — |
+| **Total Model in RAM** | **8.532 MB** | **2.312 MB** | **3.69x** |
+| **Activations (1 image)** | **24,553 KB** (23.98 MB) | **6,138 KB** (6.00 MB) | **4.00x** |
+
+- **Quantized Test Accuracy:** **94.99%** (Baseline: 95.00%, Accuracy Drop: **0.01%**).
