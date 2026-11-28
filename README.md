@@ -24,6 +24,8 @@ mobilenetv2_compression/
 ├── test.py           # Standalone quantization evaluation (matching assignment handout)
 ├── utils.py          # Forward hook activation memory profiler and plot helpers
 ├── main.py           # Unified entry point for training, manual eval, and W&B sweep
+├── data/
+│   └── runlogs/      # Training and evaluation logs
 └── README.md         # Project documentation
 ```
 
@@ -131,6 +133,7 @@ The baseline MobileNet-v2 was trained for 100 epochs with random seed 42.
 - **Train Loss:** 0.5964
 - **Val Loss:** 0.6231
 - **Checkpoint:** Saved to `./checkpoints/best_mobilenetv2.pth` (generated upon training)
+- **Reference Run Log:** Full console output from the 100-epoch baseline training run is provided at [`data/runlogs/baseline_train_run_log.txt`](https://github.com/prasanna-cs25m524/MobileNet-v2-Compression/blob/main/data/runlogs/baseline_train_run_log.txt)
 
 ### Per-Class Test Accuracy:
 
