@@ -80,12 +80,32 @@ After the sweep completes, add a **Parallel Coordinates** panel in your W&B proj
 ## 6. Baseline Configuration
 
 ### MobileNet-v2 Architecture:
+- **Total Parameters:** 2,236,682 (Trainable: 2,236,682)
 - **Width Multiplier ($\alpha$):** `1.0`
-- **Activation Function:** `ReLU6`
-- **Channel Divisibility:** `round_nearest=8` via `_make_divisible()`
-- **Dropout:** `0.2`
+- **Activation Function:** `ReLU6` (upper-bounded at 6 to preserve dynamic range under low-bit quantization)
+- **Channel Divisibility:** `round_nearest=8` via `_make_divisible()` (ensures hardware-aligned channel widths)
+- **Dropout:** `0.2` (applied before the final linear classifier)
 - **Batch Normalization:** `BatchNorm2d` after each convolution (`momentum=0.1`, `eps=1e-5`)
-- **CIFAR-10 Specific Tweak:** Initial Conv2d uses `stride=1` (instead of `stride=2` for ImageNet) to preserve dimensions on $32\times 32$ inputs
+- **CIFAR-10 Adaptation:** Initial Conv2d uses `stride=1` (instead of `stride=2` for ImageNet) to preserve spatial dimensions on $32\times 32$ inputs
+
+#### Layer-by-Layer Block Breakdown:
+The backbone consists of an initial standard convolution, followed by **17 Inverted Residual bottleneck blocks** organized across 7 stages, a 1x1 point-wise expansion convolution, global average pooling, and a linear classifier:
+
+| Stage | Layer / Operator | Input Size | Expansion ($t$) | Output Channels ($c$) | Repeats ($n$) | Stride ($s$) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: |
+| Input | `Conv2d 3x3 + BN + ReLU6` | $32 \times 32 \times 3$ | — | 32 | 1 | 1 |
+| 1 | `InvertedResidual` | $32 \times 32 \times 32$ | 1 | 16 | 1 | 1 |
+| 2 | `InvertedResidual` | $32 \times 32 \times 16$ | 6 | 24 | 2 | 1 |
+| 3 | `InvertedResidual` | $32 \times 32 \times 24$ | 6 | 32 | 3 | 2 |
+| 4 | `InvertedResidual` | $16 \times 16 \times 32$ | 6 | 64 | 4 | 2 |
+| 5 | `InvertedResidual` | $8 \times 8 \times 64$ | 6 | 96 | 3 | 1 |
+| 6 | `InvertedResidual` | $8 \times 8 \times 96$ | 6 | 160 | 3 | 2 |
+| 7 | `InvertedResidual` | $4 \times 4 \times 160$ | 6 | 320 | 1 | 1 |
+| Head | `Conv2d 1x1 + BN + ReLU6` | $4 \times 4 \times 320$ | — | 1280 | 1 | 1 |
+| Pool | `Global AvgPool2d` | $4 \times 4 \times 1280$ | — | 1280 | 1 | — |
+| Out | `Dropout(0.2) + Linear` | $1 \times 1 \times 1280$ | — | 10 | 1 | — |
+
+*Each Inverted Residual block consists of: $1\times 1$ Expansion Conv ($\text{ReLU6}$) $\rightarrow$ $3\times 3$ Depthwise Conv ($\text{ReLU6}$) $\rightarrow$ $1\times 1$ Linear Projection Conv ($\text{no activation}$), with a residual skip connection when $s=1$ and $c_{\text{in}} = c_{\text{out}}$.*
 
 ### Data Pipeline & Augmentation:
 - **Normalization:** Per-channel mean `(0.4914, 0.4822, 0.4465)` and std `(0.2023, 0.1994, 0.2010)`
@@ -99,3 +119,34 @@ After the sweep completes, add a **Parallel Coordinates** panel in your W&B proj
 - **Loss Function:** `nn.CrossEntropyLoss(label_smoothing=0.1)`
 - **Epochs:** `100`
 - **Random Seed:** `42` for o/p reproducibility
+
+---
+
+## 7. Baseline Results
+
+The baseline MobileNet-v2 was trained for 100 epochs with random seed 42.
+
+- **Best Test Accuracy:** **95.00%** (Epoch 100)
+- **Train Accuracy:** 95.94%
+- **Train Loss:** 0.5964
+- **Val Loss:** 0.6231
+- **Checkpoint:** Saved to `./checkpoints/best_mobilenetv2.pth` (generated upon training)
+
+### Per-Class Test Accuracy:
+
+| Class | Accuracy | Notes / Failure Modes |
+| :--- | :---: | :--- |
+| Automobile | 97.90% | High accuracy, few confused with truck (18) |
+| Ship | 97.20% | Clean separation |
+| Truck | 97.20% | Mostly confused with automobile |
+| Frog | 96.50% | Clean separation |
+| Horse | 96.10% | Good separation |
+| Deer | 95.80% | Occasional confusion with horse/bird |
+| Airplane | 95.40% | Good separation |
+| Bird | 93.90% | Some confusion with airplanes and other small animals |
+| Dog | 91.50% | Frequently confused with cat (57 times) |
+| Cat | 88.50% | Lowest accuracy; frequently confused with dog (68 times) |
+
+**Overall Observations:**
+- Vehicles (automobile, truck, ship) show the highest performance (>97%), likely due to distinctive edges and geometric features.
+- The largest source of errors is between visually similar animal categories, specifically cat vs. dog (accounting for more than half of all misclassifications), which is expected given the low 32x32 resolution of CIFAR-10.
